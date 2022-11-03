@@ -41,9 +41,9 @@ include(clrdefinitions.cmake)
 
 include(fetchdeps.cmake)
 
-set(CORECLR_SRC_DIR "${CORECLR_DIR}/src")
+set(CORECLR_SRC_DIR "${CORECLR_DIR}${CORECLR_DIR_PREFIX}/src")
 if (NOT EXISTS "${CORECLR_SRC_DIR}/pal")
-  set(CORECLR_SRC_DIR "${CORECLR_DIR}")
+  set(CORECLR_SRC_DIR "${CORECLR_DIR}${CORECLR_DIR_PREFIX}")
 endif()
 
 # Basic checks for valid paths

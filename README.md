@@ -81,6 +81,13 @@ You need install homebrew from here: https://brew.sh/
 
 After this, build instructions are same as for Unix (including prerequisites).
 
+#### Building for M1
+
+Please run the build commands with the following flags
+
+```
+CC=clang CXX=clang++ cmake .. -DCORECLR_BRANCH="release/6.0"
+```
 
 ### Windows
 

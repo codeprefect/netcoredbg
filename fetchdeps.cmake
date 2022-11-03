@@ -1,5 +1,13 @@
 # Fetch CoreCLR sources if necessary
 if ("${CORECLR_DIR}" STREQUAL "")
+    if ("${CORECLR_BRANCH}" STREQUAL "release/3.1")
+        set(CORECLR_REPO "https://github.com/dotnet/coreclr")
+        set(CORECLR_DIR_PREFIX "")
+    else()
+        set(CORECLR_REPO "https://github.com/dotnet/runtime")
+        set(CORECLR_DIR_PREFIX "/src/coreclr")
+    endif()
+
     set(CORECLR_DIR ${CMAKE_CURRENT_SOURCE_DIR}/.coreclr)
 
     find_package(Git REQUIRED)
@@ -26,7 +34,7 @@ if ("${CORECLR_DIR}" STREQUAL "")
             file(REMOVE_RECURSE "${CORECLR_DIR}")
         endif()
         execute_process(
-            COMMAND ${GIT_EXECUTABLE} clone --progress --depth 1 https://github.com/dotnet/coreclr "${CORECLR_DIR}" -b "${CORECLR_BRANCH}"
+            COMMAND ${GIT_EXECUTABLE} clone --progress --depth 1 "${CORECLR_REPO}" "${CORECLR_DIR}" -b "${CORECLR_BRANCH}"
             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
             RESULT_VARIABLE retcode)
         if (NOT "${retcode}" STREQUAL "0")
