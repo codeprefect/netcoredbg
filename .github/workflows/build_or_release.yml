@@ -1,0 +1,189 @@
+
+name: build and release
+on:
+  push:
+    branches:
+      - master
+      - build-test
+
+jobs:
+  build_macos:
+    strategy:
+      matrix:
+        runner: [macos-12, [self-hosted, macos, ARM64]]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set environment variables
+        run: |
+          [[ $RUNNER_ARCH = "X64" ]] && ARCH="amd64" || ARCH=$RUNNER_ARCH
+          echo "PACKAGE_NAME=netcoredbg-osx-$(echo $ARCH | awk '{print tolower($0)}').tar.gz" >> $GITHUB_ENV
+
+      - name: build the application
+        run: |
+          rm -rf build bin && mkdir build && cd build
+          CC=clang CXX=clang++ cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$PWD/../bin
+          cmake --build . --config Release --target install
+          cd ..
+          # Prepare files for deployment, copy so that test can use the build
+          cp -r bin netcoredbg
+          tar cfz ${PACKAGE_NAME} ./netcoredbg/*
+
+      - name: Run e2e tests
+        if: true == false
+        env:
+          hardcoded_test_clr_version: "coreapp3.1"
+          test_clr_version: "7.0"
+        run: |
+          cd ./test-suite
+          find . -type f -name "*.csproj" -print0 | xargs -0 sed -i '' "s/net${hardcoded_test_clr_version}/net${test_clr_version}/g"
+          find . -type f -name "*.ps1" -print0 | xargs -0 sed -i '' "s/net${hardcoded_test_clr_version}/net${test_clr_version}/g"
+          find . -type f -name "*.sh" -print0 | xargs -0 sed -i '' "s/net${hardcoded_test_clr_version}/net${test_clr_version}/g"
+          ./run_tests.sh
+          cd ..
+
+      - name: save build artifacts
+        uses: actions/upload-artifact@master
+        with:
+          name: package
+          path: ${{ env.PACKAGE_NAME }}
+
+  build_linux:
+    name: Build (Linux)
+    strategy:
+      matrix:
+        runner: [ubuntu-22.04]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Clang
+        uses: egor-tensin/setup-clang@v1
+        with:
+          version: latest
+          platform: x64
+
+      - name: Set environment variables
+        run: |
+          [[ $RUNNER_ARCH = "X64" ]] && ARCH="amd64" || ARCH=$RUNNER_ARCH
+          echo "PACKAGE_NAME=netcoredbg-linux-$(echo $ARCH | awk '{print tolower($0)}').tar.gz" >> $GITHUB_ENV
+
+      - name: build the application
+        run: |
+          rm -rf build bin && mkdir build && cd build
+          CC=clang CXX=clang++ cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$PWD/../bin
+          cmake --build . --config Release --target install
+          cd ..
+          # Prepare files for deployment, copy so that test can use the build
+          cp -r bin netcoredbg
+          tar cfz ${PACKAGE_NAME} ./netcoredbg/*
+      
+      - name: Run e2e tests
+        env:
+          hardcoded_test_clr_version: "coreapp3.1"
+          test_clr_version: "7.0"
+        run: |
+          cd ./test-suite
+          find . -type f -name "*.csproj" -print0 | xargs -0 sed -i "s/net${hardcoded_test_clr_version}/net${test_clr_version}/g"
+          find . -type f -name "*.ps1" -print0 | xargs -0 sed -i "s/net${hardcoded_test_clr_version}/net${test_clr_version}/g"
+          find . -type f -name "*.sh" -print0 | xargs -0 sed -i "s/net${hardcoded_test_clr_version}/net${test_clr_version}/g"
+          ./run_tests.sh
+          cd ..
+
+      - name: save build artifacts
+        uses: actions/upload-artifact@master
+        with:
+          name: package
+          path: ${{ env.PACKAGE_NAME }}
+
+  build_windows:
+    name: Build (Windows)
+    strategy:
+      matrix:
+        runner: [windows-latest]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Clang
+        uses: egor-tensin/setup-clang@v1
+        with:
+          version: latest
+          platform: x64
+
+      - name: Set environment variables
+        shell: bash
+        run: |
+          echo "PACKAGE_NAME=netcoredbg-win64.zip" >> $GITHUB_ENV
+      
+      - name: clean build directory
+        shell: bash
+        run: |
+          rm -rf build bin && mkdir build
+
+      - name: build the application
+        run: |   
+          cd build
+          cmake -G "Visual Studio 17 2022" -A x64 -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$pwd.path\..\bin" ..
+          cmake --build . --target install
+          cd ..
+      
+      - name: pack build output to archive
+        shell: bash
+        run: |
+          # Prepare files for deployment, copy so that test can use the build
+          cp -r bin netcoredbg
+          7z a -tzip ${PACKAGE_NAME} netcoredbg/*
+      
+      - name: Run e2e tests
+        env:
+          hardcoded_test_clr_version: "coreapp3.1"
+          test_clr_version: "7.0"
+        shell: bash
+        run: |
+          cd ./test-suite
+          find . -type f -name "*.csproj" -print0 | xargs -0 sed -i "s/net${hardcoded_test_clr_version}/net${test_clr_version}/g"
+          find . -type f -name "*.ps1" -print0 | xargs -0 sed -i "s/net${hardcoded_test_clr_version}/net${test_clr_version}/g"
+          find . -type f -name "*.sh" -print0 | xargs -0 sed -i "s/net${hardcoded_test_clr_version}/net${test_clr_version}/g"
+          ./run_tests.sh
+          cd ..
+
+      - name: save build artifacts
+        uses: actions/upload-artifact@master
+        with:
+          name: package
+          path: ${{ env.PACKAGE_NAME }}
+  
+  release:
+    name: Prepare Release
+    runs-on: 'ubuntu-latest'
+    needs: [build_windows, build_linux] #, build_macos]
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      
+      - name: Get version tag
+        run: |
+          VERSION_TAG="$(awk '/Version:/ {print $2}' ./packaging/netcoredbg.spec)-$(git rev-list HEAD --count)"
+          echo "VERSION_TAG=$VERSION_TAG" >> $GITHUB_ENV
+
+      - name: Create tag
+        run: |
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git tag "${VERSION_TAG}" -a -m "[Autogenerated] This is the latest version pushed to the ${GITHUB_REF_NAME} branch."
+          git push --tags >/dev/null 2>&1
+
+      - uses: actions/download-artifact@master
+        with:
+          name: package
+
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ env.VERSION_TAG }}
+          files: |
+            *.tar.gz
+            *.zip
